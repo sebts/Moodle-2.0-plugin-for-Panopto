@@ -1288,9 +1288,9 @@ class panopto_data {
             $options = array();
             foreach ($panoptofolders as $folderinfo) {
                 // Only add a folder to the course options if it is not already mapped to a course on moodle (unless its the current course)
-                if (!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id)) || ($this->sessiongroupid === $folderinfo->Id)) {
+                //SEBTS COMMENT OUT if (!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id)) || ($this->sessiongroupid === $folderinfo->Id)) {
                     $options[$folderinfo->Id] = $folderinfo->Name;
-                }
+                // SEBTS COMMENT OUT}
             }
         } else if (isset($panoptofolders)) {
             $options = array('Error' => array('-- No Courses Available --'));
