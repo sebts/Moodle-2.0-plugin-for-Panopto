@@ -311,7 +311,7 @@ class panopto_session_soap_client extends PanoptoTimeoutSoapClient {
         $sortby = SessionManagementEnumFolderSortField::VALUE_NAME;
         $sortincreasing = true;
         $wildcardsearchnameonly = false;
-        $unmappedonly = true;
+        $unmappedonly = false;
 
         $folderlistrequest = new SessionManagementStructListFoldersRequest(
             $pagination,
