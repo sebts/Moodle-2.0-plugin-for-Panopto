@@ -1501,17 +1501,18 @@ class panopto_data {
 
             foreach ($panoptofolders as $folderinfo) {
 
-                // Only add a folder to the course options if it is not already mapped to a course on moodle.
+                // SEBTS COMMENT OUTOnly add a folder to the course options if it is not already mapped to a course on moodle.
                 // Unless its the current course.
-                if (!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id)) 
-                    || ($this->sessiongroupid === $folderinfo->Id)) {
+                // if (!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id)) 
+                //     || ($this->sessiongroupid === $folderinfo->Id)) {
 
-                    if ($this->sessiongroupid === $folderinfo->Id) {
-                        $containsmappedfolder = true;
-                    }
+                //     if ($this->sessiongroupid === $folderinfo->Id) {
+                //         $containsmappedfolder = true;
+                //     }
 
+                // Only add a folder to the course options if it is not already mapped to a course on moodle (unless its the current course)
                     $options[$folderinfo->Id] = $folderinfo->Name;
-                }
+                // SEBTS COMMENT OUT}
             }
         }
 
