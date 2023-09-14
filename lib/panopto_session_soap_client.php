@@ -22,13 +22,6 @@
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-/**
- * The user soap client for Panopto
- *
- * @copyright Panopto 2009 - 2016
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-
 defined('MOODLE_INTERNAL') || die();
 
 require_once(dirname(__FILE__) . '/SessionManagement/SessionManagementAutoload.php');
@@ -96,8 +89,9 @@ class panopto_session_soap_client extends PanoptoTimeoutSoapClient {
             $apiuseruserkey
         );
 
-        $this->serviceparams =
-            panopto_generate_wsdl_service_params('https://'. $servername . '/Panopto/PublicAPI/4.6/SessionManagement.svc?singlewsdl');
+        $this->serviceparams = panopto_generate_wsdl_service_params(
+            'https://'. $servername . '/Panopto/PublicAPI/4.6/SessionManagement.svc?singlewsdl'
+        );
     }
 
     /**
@@ -410,6 +404,95 @@ class panopto_session_soap_client extends PanoptoTimeoutSoapClient {
                     if ($this->sessionmanagementserviceget->GetCreatorFoldersList($folderlistparams)) {
                         $retobj = $this->sessionmanagementserviceget->getResult();
                         $folderlist = array_merge($folderlist, $retobj->GetCreatorFoldersListResult->Results->Folder);
+                    } else {
+                        return $this->handle_error(
+                            $this->sessionmanagementserviceget->getLastError()['SessionManagementServiceGet::GetCreatorFoldersList']
+                        );
+                    }
+
+                    ++$currentpage;
+                    $folderstoget -= $resultsperpage;
+                }
+            } else if ($totalresults === 0) {
+                // In this case folderlist will be null but that is handled poorly in the UI.
+                $folderlist = array();
+            }
+
+            return $folderlist;
+        } else {
+            return $this->handle_error(
+                $this->sessionmanagementserviceget->getLastError()['SessionManagementServiceGet::GetCreatorFoldersList']
+            );
+        }
+    }
+
+    /**
+     * Attempts to get all extended folders the user has creator access to.
+     */
+    public function get_extended_creator_folders_list() {
+
+        if (!isset($this->sessionmanagementserviceget)) {
+            $this->sessionmanagementserviceget = new SessionManagementServiceGet($this->serviceparams);
+        }
+
+        $resultsperpage = 1000;
+        $currentpage = 0;
+        $pagination = new SessionManagementStructPagination($resultsperpage, $currentpage);
+        $parentfolderid = null;
+        $publiconly = false;
+        $sortby = SessionManagementEnumFolderSortField::VALUE_NAME;
+        $sortincreasing = true;
+        $wildcardsearchnameonly = false;
+        $unmappedonly = true;
+
+        $folderlistrequest = new SessionManagementStructListFoldersRequest(
+            $pagination,
+            $parentfolderid,
+            $publiconly,
+            $sortby,
+            $sortincreasing,
+            $wildcardsearchnameonly,
+            $unmappedonly
+        );
+        $searchquery = null;
+
+        $folderlistparams = new SessionManagementStructGetExtendedCreatorFoldersList(
+            $this->authparam,
+            $folderlistrequest,
+            $searchquery
+        );
+
+        if ($this->sessionmanagementserviceget->GetExtendedCreatorFoldersList($folderlistparams)) {
+            $retobj = $this->sessionmanagementserviceget->getResult();
+            $totalresults = $retobj->GetExtendedCreatorFoldersListResult->TotalNumberResults;
+
+            $folderlist = $retobj->GetExtendedCreatorFoldersListResult->Results->ExtendedFolder;
+
+            if ($totalresults > $resultsperpage) {
+
+                $folderstoget = $totalresults - $resultsperpage;
+                ++$currentpage;
+                while ($folderstoget > 0) {
+                    $pagination = new SessionManagementStructPagination($resultsperpage, $currentpage);
+
+                    $folderlistrequest = new SessionManagementStructListFoldersRequest(
+                        $pagination,
+                        $parentfolderid,
+                        $publiconly,
+                        $sortby,
+                        $sortincreasing,
+                        $wildcardsearchnameonly
+                    );
+
+                    $folderlistparams = new SessionManagementStructGetExtendedCreatorFoldersList(
+                        $this->authparam,
+                        $folderlistrequest,
+                        $searchquery
+                    );
+
+                    if ($this->sessionmanagementserviceget->GetExtendedCreatorFoldersList($folderlistparams)) {
+                        $retobj = $this->sessionmanagementserviceget->getResult();
+                        $folderlist = array_merge($folderlist, $retobj->GetExtendedCreatorFoldersListResult->Results->ExtendedFolder);
                     } else {
                         return $this->handle_error(
                             $this->sessionmanagementserviceget->getLastError()['SessionManagementServiceGet::GetCreatorFoldersList']
