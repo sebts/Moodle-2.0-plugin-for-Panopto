@@ -1534,22 +1534,23 @@ class panopto_data {
                 // 2/ Unless its the current course.
                 // 3/ If it is not assignment folder, but only after Panopto version 13.14.0.00000.
 
-                $isassignmentfolder = $canwegetextendedfolder
-					? $folderinfo->IsAssignmentFolder
-                    : false;
+				// SEBTS -- comment out this block so we can allow any Panopto folders to be linked to any courses
+                // SEBTS $isassignmentfolder = $canwegetextendedfolder
+                    // SEBTS ? $folderinfo->IsAssignmentFolder
+                    // SEBTS : false;
 
-                if ((!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id))
-                    || ($this->sessiongroupid === $folderinfo->Id))
-                    && !$isassignmentfolder) {
+                // SEBTS if ((!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id))
+                    // SEBTS || ($this->sessiongroupid === $folderinfo->Id))
+                    // SEBTS && !$isassignmentfolder) {
 
-                    if ($this->sessiongroupid === $folderinfo->Id) {
-						$containsmappedfolder = true;
-                    }
+                    // SEBTS if ($this->sessiongroupid === $folderinfo->Id) {
+                        // SEBTS $containsmappedfolder = true;
+                    // SEBTS }
 
-                    $options[$folderinfo->Id] = $folderinfo->Name; 
+                    $options[$folderinfo->Id] = $folderinfo->Name; // SEBTS leave this line in place 
                 }
             }
-        }
+        
 
         if (!$containsmappedfolder && !empty($this->sessiongroupid)) {
             $currentfolder = $this->get_folders_by_id_no_sync();
