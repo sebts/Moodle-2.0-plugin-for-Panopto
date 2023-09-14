@@ -25,9 +25,9 @@ defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
 if (empty($CFG)) {
+    // @codingStandardsIgnoreLine
     require_once('../../config.php');
 }
-
 require_once($CFG->libdir . '/clilib.php');
 require_once($CFG->libdir . '/dmllib.php');
 require_once($CFG->libdir .'/filelib.php');
@@ -123,6 +123,12 @@ class panopto_data {
      *   use the new endpoint.
      */
     public static $ccv2requiredpanoptoversion = '12.0.0';
+
+    /**
+     * @var string $apiassignmentfolderspanoptoversion if the Panopto server is using this version then we can filter
+     *   assignment folders.
+     */
+    public static $apiassignmentfolderspanoptoversion = '13.14.0.00000';
 
     /**
      * Returns an array of possible values for the Panopto folder name style
@@ -230,9 +236,10 @@ class panopto_data {
         // Get the context of the course so we can get capabilities.
         $context = context_course::instance($courseid, MUST_EXIST);
 
-        return has_capability('block/panopto:provision_aspublisher', $context, $USER->id) ||
+        return (has_capability('block/panopto:provision_aspublisher', $context, $USER->id) ||
             has_capability('block/panopto:provision_asteacher', $context, $USER->id) ||
-            has_capability('moodle/course:update', $context, $USER->id);
+            has_capability('moodle/course:update', $context, $USER->id)) &&
+            has_capability('block/panopto:provision_course', $context, $USER->id);
     }
 
     /**
@@ -415,7 +422,6 @@ class panopto_data {
                 }
 
                 if (!$skipusersync && $this->uname !== 'guest') {
-                    // Uname will be guest is provisioning/upgrading through cli, no need to sync this 'user'.
                     // This is intended to make sure provisioning teachers get access without relogging,
                     // so we only need to perform this if we aren't syncing all enrolled users.
 
@@ -694,9 +700,9 @@ class panopto_data {
             if (empty($aspxauthcookie)) {
                 $importresult = new stdClass;
                 $importresult->importedcourseid = $originalcourseid;
-                $importresult->errormessage = get_string('copy_api_auth_error', 'block_panopto', $this->servername);
+                $importresult->errormessage = get_string('copy_api_error_auth', 'block_panopto', $this->servername);
                 $importresults[] = $importresult;
-                self::print_log(get_string('copy_api_auth_error', 'block_panopto', $importresult));
+                self::print_log(get_string('copy_api_error_auth', 'block_panopto', $importresult));
                 return $importresults;
             }
 
@@ -906,7 +912,19 @@ class panopto_data {
 
         $this->ensure_session_manager();
 
-        $ret = $this->sessionmanager->get_creator_folders_list();
+        // We are checking if we can get extended folder or not here based on Panopto version.
+        // Extended folder will have information if folder is assignment or not.
+        $this->ensure_auth_manager();
+        $activepanoptoserverversion = $this->authmanager->get_server_version();
+        $canwegetextendedfolder = version_compare(
+            $activepanoptoserverversion,
+            self::$apiassignmentfolderspanoptoversion,
+            '>='
+        );
+
+        $ret = $canwegetextendedfolder
+            ? $this->sessionmanager->get_extended_creator_folders_list()
+            : $this->sessionmanager->get_creator_folders_list();
 
         return $ret;
     }
@@ -974,7 +992,8 @@ class panopto_data {
                     $userinfo->firstname,
                     $userinfo->lastname,
                     $userinfo->email,
-                    $groupstosync
+                    $groupstosync,
+                    $userinfo->username
                 );
             } else {
                 self::print_log(get_string('panopto_server_error', 'block_panopto', $this->servername));
@@ -1499,20 +1518,36 @@ class panopto_data {
 
         if (!empty($panoptofolders)) {
 
+            // We are checking if we can get extended folder or not here based on Panopto version.
+            // Extended folder will have information if folder is assignment or not.
+            $this->ensure_auth_manager();
+            $canwegetextendedfolder = version_compare(
+                $this->authmanager->get_server_version(),
+                self::$apiassignmentfolderspanoptoversion,
+                '>='
+            );
+
             foreach ($panoptofolders as $folderinfo) {
 
-                // SEBTS COMMENT OUTOnly add a folder to the course options if it is not already mapped to a course on moodle.
-                // Unless its the current course.
-                // if (!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id)) 
-                //     || ($this->sessiongroupid === $folderinfo->Id)) {
+                // Filter folders based on the following criteria.
+                // 1/ Only add a folder to the course options if it is not already mapped to a course on moodle.
+                // 2/ Unless its the current course.
+                // 3/ If it is not assignment folder, but only after Panopto version 13.14.0.00000.
 
-                //     if ($this->sessiongroupid === $folderinfo->Id) {
-                //         $containsmappedfolder = true;
-                //     }
+                $isassignmentfolder = $canwegetextendedfolder
+					? $folderinfo->IsAssignmentFolder
+                    : false;
 
-                // Only add a folder to the course options if it is not already mapped to a course on moodle (unless its the current course)
-                    $options[$folderinfo->Id] = $folderinfo->Name;
-                // SEBTS COMMENT OUT}
+                if ((!$DB->get_records('block_panopto_foldermap', array('panopto_id' => $folderinfo->Id))
+                    || ($this->sessiongroupid === $folderinfo->Id))
+                    && !$isassignmentfolder) {
+
+                    if ($this->sessiongroupid === $folderinfo->Id) {
+						$containsmappedfolder = true;
+                    }
+
+                    $options[$folderinfo->Id] = $folderinfo->Name; 
+                }
             }
         }
 
@@ -1697,6 +1732,92 @@ class panopto_data {
     }
 
     /**
+     * Check to determine if folder is inheriting permissions
+     *
+     * @param string $folderid folder id
+     * @return bool
+     */
+    public function is_folder_inheriting_permissions($folderid) {
+        $this->ensure_auth_manager();
+
+        // This call will log the user into Panopto using the SOAP API and it will also store the Panopto cookies.
+        $this->authmanager->log_on_with_external_provider();
+
+        // Only do this code if we have proper access to the target Panopto course folder.
+        $location = 'https://'. $this->servername . '/Panopto/api/v1/folders/'. $folderid . '/settings/access';
+
+        $curl = new \curl();
+        $aspxauthcookie = "";
+        foreach ($this->authmanager->panoptoauthcookies as $key => $value) {
+            if (strpos(strtolower($key), 'aspxauth') !== false) {
+                $aspxauthcookie = $value;
+                break;
+            }
+        }
+
+        if (empty($aspxauthcookie)) {
+            self::print_log(get_string('copy_api_error_auth', 'block_panopto', $this->servername));
+            return false;
+        }
+
+        $options = [
+            'CURLOPT_VERBOSE' => false,
+            'CURLOPT_RETURNTRANSFER' => true,
+            'CURLOPT_HEADER' => false,
+            'CURLOPT_HTTPHEADER' => array('Content-Type: application/json',
+                                          'Cookie: .ASPXAUTH='.$aspxauthcookie)
+        ];
+
+        $sockettimeout = get_config('block_panopto', 'panopto_socket_timeout');
+        $connectiontimeout = get_config('block_panopto', 'panopto_connection_timeout');
+
+        if (!!$sockettimeout) {
+            $options['CURLOPT_TIMEOUT'] = $sockettimeout;
+        }
+
+        if (!!$connectiontimeout) {
+            $options['CURLOPT_CONNECTTIMEOUT'] = $connectiontimeout;
+        }
+
+        $proxyhost = get_config('block_panopto', 'wsdl_proxy_host');
+        $proxyport = get_config('block_panopto', 'wsdl_proxy_port');
+
+        if (!empty($proxyhost)) {
+            $options['CURLOPT_PROXY'] = $proxyhost;
+        }
+
+        if (!empty($proxyport)) {
+            $options['CURLOPT_PROXYPORT'] = $proxyport;
+        }
+
+        $response = json_decode($curl->get($location, null, $options));
+
+        if (!empty($response) && isset($response->IsInherited)) {
+            return $response->IsInherited;
+        } else {
+            self::print_log(get_string('copy_api_error_response', 'block_panopto', $response));
+            return false;
+        }
+    }
+
+    /**
+     * Get cm for course
+     *
+     * @param string $courseid course id
+     */
+    public function get_cm_for_course($courseid) {
+        global $DB;
+
+        $sql = "SELECT cm.id " .
+                "FROM {course_modules} cm " .
+                "JOIN {modules} md ON (md.id = cm.module) " .
+                "JOIN {lti} m ON (m.id = cm.instance) " .
+                "WHERE md.name = :name AND cm.course = :course";
+        return $DB->get_records_sql($sql,
+            array('name' => 'lti', 'course' => $courseid));
+    }
+
+    /**
      * Print log
      *
      * @param string $logmessage log message
@@ -1716,7 +1837,7 @@ class panopto_data {
                     FILE_APPEND
                 );
             } else {
-                error_log($logmessage);
+                debugging($logmessage);
 
                 // These flush's are needed for longer processes like the Moodle upgrade process and import process.
 
