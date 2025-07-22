@@ -70,6 +70,16 @@ class panopto_user_soap_client extends PanoptoTimeoutSoapClient {
     private $usermanagementservicecreate;
 
     /**
+     * @var UserManagementServiceUpdate object used to call the user update service
+     */
+    private $usermanagementserviceupdate;
+
+    /**
+     * @var UserManagementServiceDelete object used to call the user delete service
+     */
+    private $usermanagementservicedelete;
+
+    /**
      * Main constructor
      *
      * @param string $servername
@@ -149,9 +159,19 @@ class panopto_user_soap_client extends PanoptoTimeoutSoapClient {
         if ($this->usermanagementserviceget->GetUserByKey($getuserbykeyparams)) {
             $result = $this->usermanagementserviceget->getResult()->GetUserByKeyResult;
         } else {
-            $lasterror = $this->usermanagementserviceget->getLastError()['UserManagementServiceGet::GetUserByKey'];
-            \panopto_data::print_log(var_export($lasterror, true));
-            throw $lasterror;
+            // Try again in case if username is unified i.e unified\user, but user from moodle DB is still server\user.
+            $username = preg_replace('/^[^\\\\]*\\\\/', 'unified\\', $userkey);
+            $getuserbykeyparams = new UserManagementStructGetUserByKey(
+                $this->authparam,
+                $username
+            );
+            if ($this->usermanagementserviceget->GetUserByKey($getuserbykeyparams)) {
+                $result = $this->usermanagementserviceget->getResult()->GetUserByKeyResult;
+            } else {
+                $lasterror = $this->usermanagementserviceget->getLastError()['UserManagementServiceGet::GetUserByKey'];
+                \panopto_data::print_log(var_export($lasterror, true));
+                throw $lasterror;
+            }
         }
         return $result;
     }

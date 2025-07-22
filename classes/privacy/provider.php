@@ -28,7 +28,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(dirname(__FILE__) . '/../../lib/panopto_data.php');
 
-use \core_privacy\local\metadata\collection;
+use core_privacy\local\metadata\collection;
 
 // @codingStandardsIgnoreStart
 if (interface_exists('\core_privacy\local\request\userlist')) {
@@ -77,7 +77,7 @@ class provider implements
      *
      * @param collection $collection
      */
-    public static function get_metadata(collection $collection) : collection {
+    public static function get_metadata(collection $collection): collection {
         $collection->add_external_location_link('block_panopto', [
             'firstname' => 'privacy:metadata:block_panopto:firstname',
             'lastname' => 'privacy:metadata:block_panopto:lastname',
@@ -93,7 +93,7 @@ class provider implements
      * @param int $userid the user to search.
      * @return contextlist $contextlist the list of contexts used in this plugin.
      */
-    public static function get_contexts_for_userid(int $userid) : \core_privacy\local\request\contextlist {
+    public static function get_contexts_for_userid(int $userid): \core_privacy\local\request\contextlist {
         $contextlist = new \core_privacy\local\request\contextlist();
 
         $currentcourses = \enrol_get_users_courses($userid, true);
@@ -123,7 +123,7 @@ class provider implements
         }
 
         $enrolledusers = \get_enrolled_users($context);
-        $enrolleduserids = array();
+        $enrolleduserids = [];
         foreach ($enrolledusers as $user) {
             $enrolleduserids[] = $user->id;
         }
@@ -155,14 +155,14 @@ class provider implements
                 \panopto_user_info_valid($panoptouser->FirstName) &&
                 \panopto_user_info_valid($panoptouser->LastName) &&
                 \panopto_user_info_valid($panoptouser->Email)) {
-                $subcontext = array();
+                $subcontext = [];
                 $subcontext[] = \get_string('pluginname', 'block_panopto');
                 $subcontext[] = $currentpanopto->servername;
 
                 \core_privacy\local\request\writer::with_context(\context_system::instance())->export_data($subcontext, (object) [
                     'firstname' => $panoptouser->FirstName,
                     'lastname' => $panoptouser->LastName,
-                    'email' => $panoptouser->Email
+                    'email' => $panoptouser->Email,
                 ]);
             }
         }
@@ -184,7 +184,7 @@ class provider implements
             $currentpanopto->servername = $panoptoserver->name;
             $currentpanopto->applicationkey = $panoptoserver->appkey;
 
-            $userids = array();
+            $userids = [];
             foreach ($targetusers as $targetuser) {
                 // Search for user in panopto, if they exist then export the below data, if they do not exist then skip.
                 $panoptouser = $currentpanopto->get_user_by_key($instancename . '\\' . $targetuser->username);
